@@ -55,6 +55,7 @@ export type IDrawOption = {
 export type IEmitter = {
   dragged: number;
   zoom: number;
+  click: number;
 }
 
 type IDrawTextOption = { x: number, y: number, text: string, color?: string, fontSize?: string, align?: CanvasTextAlign, baseLine?: CanvasTextBaseline };

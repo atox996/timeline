@@ -28,6 +28,7 @@ class TimeLine {
   #isDragging = false;
   #lastTouchX: number | null = null;
   #lastPinchDistance: number | null = null;
+  #startX: number = 0;
 
   constructor(el: string | HTMLCanvasElement, cfg?: ICfg) {
     if (!el) throw new Error('canvas Element Or Element ID is required!');
@@ -85,6 +86,7 @@ class TimeLine {
     this.$canvas.addEventListener('wheel', this.#onZoom.bind(this), { passive: false });
     // 拖拽按下-拖拽
     this.$canvas.addEventListener('mousedown', this.#onDrag.bind(this));
+    this.$canvas.addEventListener('click', this.#onClick.bind(this));
     // 触摸事件监听器
     this.$canvas.addEventListener('touchstart', this.#onTouchStart.bind(this), { passive: false });
     this.$canvas.addEventListener('touchmove', throttle(this.#onTouchMove.bind(this), 1000 / this.cfg.fps), { passive: false });
@@ -174,14 +176,47 @@ class TimeLine {
     return this.#msPerPixel;
   }
 
+  #onClick(e: MouseEvent) {
+    if (this.#isDragging) return;
+    // 获取当前时间范围
+    const [startTime] = this.#timeRange!;
+    const rect = this.$canvas.getBoundingClientRect();
+
+    // 计算点击位置相对于 Canvas 的 X 坐标
+    const clickX = e.clientX - rect.left;
+
+    // 计算点击时间（根据每像素时间跨度 #msPerPixel 计算）
+    const clickedTime = Math.round(startTime + clickX * this.#msPerPixel!);
+
+    // 更新当前时间
+    this.#currentTime = clickedTime;
+
+    // 重新绘制时间轴
+    this.draw({
+      currentTime: this.#currentTime,
+      areas: this.#areas,
+    });
+    this.#emit('click', clickedTime);
+  }
+
   // 拖拽
   #onDrag(downEvent: MouseEvent) {
-    this.#isDragging = true;
+    this.#isDragging = false;
     let prevClientX = downEvent.clientX;
     let currentTime = this.#currentTime;
+    this.#startX = downEvent.clientX;
 
     // 监听鼠标移动
     const moveListener = throttle(({ clientX }: MouseEvent) => {
+      if (!this.#isDragging) {
+        // 判断是否开始拖拽
+        const distanceX = Math.abs(clientX - this.#startX);
+
+        // 如果鼠标移动的距离超过阈值，则认为是拖拽
+        if (distanceX > 5) {
+          this.#isDragging = true;
+        }
+      }
       if (!this.#isDragging) return;
       currentTime = Math.round(this.#currentTime - this.#timeSpacing / this.cfg.scaleSpacing * (clientX - prevClientX));
       prevClientX = clientX;
@@ -209,8 +244,9 @@ class TimeLine {
       this.$canvas.removeEventListener('mousemove', moveListener);
       this.$canvas.removeEventListener('mousemove', outsideListener);
       document.removeEventListener('mouseup', mouseupListener);
-      this.#isDragging = false;
-      this.#emit('dragged', currentTime);
+      if (this.#isDragging) {
+        this.#emit('dragged', currentTime);
+      }
     };
 
     this.$canvas.addEventListener('mousemove', moveListener);
